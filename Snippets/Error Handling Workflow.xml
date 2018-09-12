@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Workflow PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Workflow explicitTransitions="true" name="Error Handling Workflow">
+  <Variable input="true" name="caseName">
+    <Description>The name of the workflow case</Description>
+  </Variable>
+  <Variable input="true" name="wfMessages"/>
+  <Variable input="true" name="errorParms"/>
+  <Variable input="true" name="identityName">
+    <Description>name of the relevant identity</Description>
+  </Variable>
+  <Variable input="true" name="globalMap"/>
+  <Step icon="Start" name="Start" posX="91" posY="199">
+    <Transition to="Log Errors"/>
+  </Step>
+  <Step icon="Stop" name="Stop" posX="467" posY="204"/>
+  <!-- Below: Actual error handling rule - See "Toolbox\Snippets\Error Handling Rule.xml" -->
+  <Step action="rule:Error Handling Rule" icon="Default" name="Log Errors" posX="282" posY="209">
+    <Transition to="Stop"/>
+  </Step>
+</Workflow>

@@ -1,0 +1,166 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Workflow PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Workflow explicitTransitions="true" libraries="Identity" name="Sample Joiner Workflow with AD Provisioning" type="IdentityLifecycle">
+  <Variable input="true" name="trigger">
+    <Description>The IdentityTrigger</Description>
+  </Variable>
+  <Variable input="true" name="event" transient="true">
+    <Description>The IdentityChangeEvent.  It can be used to build
+      the provisioning plan, but does not need to be
+      persisted with the case, so marked as transient.</Description>
+  </Variable>
+  <Variable input="true" name="identityName">
+    <Description>The name of the identity.</Description>
+  </Variable>
+  <Variable input="true" name="plan">
+    <Description>Plan object</Description>
+  </Variable>
+  <Variable input="true" name="project">
+    <Description>Project object</Description>
+  </Variable>
+  <!-- Below: Email template name for email notification (replace with something useful) -->
+  <Variable initializer="Alert Notification" input="true" name="template"/>
+  <!-- Below: Email address to send email notification to (replace with script) -->
+  <Variable initializer="helloworld@helloworld.com" name="to"/>
+  <Description>Process a new employee.</Description>
+  <Step icon="Start" name="Start" posX="28" posY="10">
+    <Transition to="Process user"/>
+  </Step>
+  <Step icon="Message" name="Process user" posX="148" posY="10" resultVariable="plan">
+    <Description>Process the user that joined.</Description>
+    <Script>
+      <Source>
+            import sailpoint.object.*;
+            import sailpoint.api.*;
+            Identity i = context.getObjectByName(Identity.class, identityName);
+            ProvisioningPlan plan = new ProvisioningPlan();
+            plan.setIdentity(i);
+            plan.setNativeIdentity(identityName);
+            AccountRequest accReq;
+            List attrReq;
+            List accountRequests = new ArrayList();
+            accReq = new AccountRequest();
+            accReq.setApplication("Active Directory"); // Replace with real name of AD app
+            accReq.setOp(ProvisioningPlan.ObjectOperation.Create);
+            attrReq = new ArrayList();
+            attrReq.add(new AttributeRequest("sAMAccountName", identityName));
+            attrReq.add(new AttributeRequest("primaryGroupDN", "CN=Domain Users,CN=Users,DC=seri,DC=sailpointdemo,DC=com"));
+            attrReq.add(new AttributeRequest("ObjectType", "User"));
+            attrReq.add(new AttributeRequest("*password*", "newP@$$word"));
+            attrReq.add(new AttributeRequest("memberOf", "CN=Development,OU=Groups,OU=Demo,DC=seri,DC=sailpointdemo,DC=com"));
+            attrReq.add(new AttributeRequest("IIQDisabled", false));
+            // Provisioning policy can be used to set additional attributes - Make sure "Review Required" is unchecked
+            accReq.setNativeIdentity( "CN=" + identityName + ",OU=Austin,OU=Americas,OU=Demo,DC=seri,DC=sailpointdemo,DC=com");
+            accReq.setAttributeRequests(attrReq);
+            accountRequests.add(accReq);
+            plan.setAccountRequests(accountRequests);
+        
+      return plan;
+        </Source>
+    </Script>
+    <Transition to="Compile Project"/>
+  </Step>
+  <Step action="call:compileProvisioningProject" name="Compile Project" posX="266" posY="11" resultVariable="project">
+    <Arg name="requester" value="string:spadmin"/>
+    <Arg name="requireCreateTemplates" value="string:false"/>
+    <Arg name="identityName" value="ref:identityName"/>
+    <Arg name="noApplicationTemplates" value="string:true"/>
+    <Arg name="source" value="string:UI"/>
+    <Arg name="optimisticProvisioning" value="string:false"/>
+    <Arg name="plan" value="ref:plan"/>
+    <Description>Compile the provisioning plan into a provisioning project.  
+                     If you need to pass in provisioner options like "noFiltering"  
+                     or "noRoleDeprovisioning" you must pass them as explicit  
+                     arguments to the call.  
+                     The evaluation options "requester" and "source" are commonly  
+                     set here.               
+                     You can also pass things into the Template and Field scripts by  
+                    defining Args in this step.</Description>
+    <Transition to="Provision"/>
+  </Step>
+  <Step action="call:provisionProject" icon="Provision" name="Provision" posX="405" posY="12">
+    <Arg name="background" value="string:true"/>
+    <Arg name="project" value="ref:project"/>
+    <Description>Provision the project.</Description>
+    <Transition to="Notify"/>
+  </Step>
+  <Step icon="Stop" name="Stop" posX="399" posY="130"/>
+  <!-- Below: Email notification step -->
+  <Step action="call:sendEmail" configForm="Provisioning Notification Step Form" icon="Email" name="Notify" posX="533" posY="69">
+    <Arg name="requesterEmail" value="script:getEmail(launcher)"/>
+    <Arg name="otherUsersToNotifyEmailTemplate"/>
+    <Arg name="notificationScheme" value="user"/>
+    <Arg name="identityName" value="ref:identityName"/>
+    <Arg name="userEmailTemplate" value="Alert Notification"/>
+    <Arg name="source" value="ref:source"/>
+    <Arg name="managerEmail" value="script:getManagersEmail(identityName, plan)"/>
+    <Arg name="otherUsersToNotify"/>
+    <Arg name="trace" value="ref:trace"/>
+    <Arg name="requesterEmailTemplate"/>
+    <Arg name="userEmail" value="script:getUserEmail(identityName, plan)"/>
+    <Arg name="to" value="ref.identityName"/>
+    <Arg name="securityOfficerName"/>
+    <Arg name="securityOfficerEmailTemplate"/>
+    <Arg name="plan" value="ref:plan"/>
+    <Arg name="managerEmailTemplate"/>
+    <Arg name="flow" value="ref:flow"/>
+    <Arg name="launcher" value="ref:launcher"/>
+    <Description>
+            Notify the various actors specified on notification scheme.
+        </Description>
+    <Transition to="Stop"/>
+  </Step>
+  <!-- Below: Error handling step - See "Toolbox\Snippets\Error Handling Workflow.xml" -->
+  <Step catches="complete" icon="Catches" name="Finalize" posX="941" posY="193">
+    <Arg name="errorObject"/>
+    <Arg name="identityName" value="ref:identityName"/>
+    <Arg name="loggerNameBase"/>
+    <Arg name="errorParms">
+      <Script>
+        <Source>
+          
+            import sailpoint.object.Custom;
+            HashMap errorParms = new HashMap();
+            //Set the name of the person requesting or launching the workflow.
+            if (launcher != null) {
+              Identity launcherIdentity = context.getObjectById(Identity.class, launcher);
+          		if (launcherIdentity != null) {
+              	errorParms.put("launcherName", launcherIdentity.getName());
+          		}
+            }
+            errorParms.put("flowtype", "Form Terminate");
+            errorParms.put("identityName", identityName);
+            return errorParms;
+          
+        </Source>
+      </Script>
+    </Arg>
+    <Arg name="globalMap"/>
+    <Arg name="caseName" value="script:wfcase.getName()"/>
+    <Arg name="wfMessages">
+      <Script>
+        <Source>
+          
+          import sailpoint.tools.Message;
+          return wfcase.getMessagesByType(Message.Type.Error);
+          
+        </Source>
+      </Script>
+    </Arg>
+    <ConditionScript>
+      <Source>
+       
+        // Only call the error handling workflow if the user passed authorization and there are other error messages in the wfcase
+        // other than related to authorization
+        return (wfcase.getErrors() != null);
+       
+      </Source>
+    </ConditionScript>
+    <Description>
+      Call the CAT error handling workflow.
+    </Description>
+    <WorkflowRef>
+      <Reference class="sailpoint.object.Workflow" id="4028860165c8c32d0165c90ee2da0018" name="Error Handling Workflow"/>
+    </WorkflowRef>
+  </Step>
+</Workflow>
