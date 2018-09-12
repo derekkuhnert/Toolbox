@@ -41,6 +41,8 @@
             List accountRequests = new ArrayList();
             accReq = new AccountRequest();
             accReq.setApplication("Active Directory"); // Replace with real name of AD app
+            // Below: A leaver workflow would use ObjectOperation.Disable to disable the AD acct. And the AccountRequest 
+            // doesn't need any AttributeRequests
             accReq.setOp(ProvisioningPlan.ObjectOperation.Create);
             attrReq = new ArrayList();
             attrReq.add(new AttributeRequest("sAMAccountName", identityName));
